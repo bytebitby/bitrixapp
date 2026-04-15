@@ -12,9 +12,12 @@ if (!$domain || !$token) {
     json_response(['success' => false, 'message' => 'No domain or token', 'domain' => $domain, 'has_token' => (bool)$token], 400);
 }
 
+// Определяем URL хендлера (должен быть публичным)
+$handlerUrl = 'http://89.169.154.151/handler.php';
+
 $result = rest_call($domain, $token, 'bizproc.activity.add', [
     'CODE' => 'universal_webhook',
-    'HANDLER' => 'http://89.169.154.151/handler.php',
+    'HANDLER' => $handlerUrl,
     'AUTH_USER_ID' => 1,
     'USE_SUBSCRIPTION' => 'Y',
     'NAME' => ['ru' => 'Универсальный обработчик', 'en' => 'Universal Webhook Handler'],
@@ -37,5 +40,3 @@ $result = rest_call($domain, $token, 'bizproc.activity.add', [
 ]);
 
 json_response(['success' => empty($result['error']), 'portal' => $domain, 'result' => $result]);
-PHPEOF
-echo "install OK"

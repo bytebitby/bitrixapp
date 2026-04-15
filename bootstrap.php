@@ -61,5 +61,3 @@ function rest_call(string $domain, string $token, string $method, array $fields 
     if (!is_array($decoded)) return ['error' => 'INVALID_RESPONSE', 'error_description' => (string)$response];
     return $decoded;
 }
-PHPEOF
-echo "bootstrap OK"
