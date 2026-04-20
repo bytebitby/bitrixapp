@@ -13,6 +13,7 @@ $placementUrl = app_url('placement.php');
 
 if ($handlerUrl === null || $placementUrl === null) {
     render_install_page(false, [
+        'status' => 200,
         'message' => 'Не удалось определить публичный URL приложения. Укажите APP_BASE_URL в переменных окружения или откройте install.php через внешний домен.',
         'details' => [
             'detected_base_url' => app_config()['app_base_url'],
@@ -24,6 +25,7 @@ if ($handlerUrl === null || $placementUrl === null) {
 
 if ($domain === null || $token === null) {
     render_install_page(false, [
+        'status' => 200,
         'message' => 'Bitrix24 не передал данные авторизации. Откройте этот URL как путь первоначальной установки локального приложения.',
         'details' => [
             'domain' => $domain,

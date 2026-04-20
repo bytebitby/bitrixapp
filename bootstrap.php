@@ -455,5 +455,6 @@ HTML : '';
 </html>
 HTML;
 
-    html_response($html, $success ? 200 : 500);
+    $statusCode = (int)($context['status'] ?? ($success ? 200 : 500));
+    html_response($html, $statusCode);
 }
