@@ -1,11 +1,6 @@
 <?php
 declare(strict_types=1);
 
-/**
- * Handler для активности "Универсальный обработчик" в бизнес-процессах Битрикс24
- * Вызывается Битриксом при выполнении этой активности в БП
- */
-
 require __DIR__ . '/bootstrap.php';
 
 $data = get_request_data();
@@ -13,62 +8,111 @@ app_log('HANDLER HIT', ['request' => $data]);
 
 $domain = get_portal_domain($data);
 $token = get_auth_token($data);
+$eventToken = request_value($data, 'event_token') ?? request_value($data, 'EVENT_TOKEN');
+$activityId = request_value($data, 'activity_id') ?? request_value($data, 'ACTIVITY_ID');
+$workflowId = request_value($data, 'workflow_id') ?? request_value($data, 'WORKFLOW_ID');
+$documentId = request_value($data, 'document_id') ?? request_value($data, 'DOCUMENT_ID');
+$webhookUrl = request_value($data, 'properties.webhook_url') ?? request_value($data, 'webhook_url');
 
-// Параметры от Битрикса
-$activityId = request_value($data, 'ACTIVITY_ID');
-$workflowId = request_value($data, 'WORKFLOW_ID');
-$documentId = request_value($data, 'DOCUMENT_ID');
+if (!is_string($webhookUrl) || trim($webhookUrl) === '') {
+    $resultPayload = [
+        'webhook_result' => '',
+        'http_status' => 0,
+        'error_message' => 'Не указан URL вебхука в свойствах активности.',
+    ];
 
-// Наши свойства активности
-$webhookUrl = request_value($data, 'webhook_url');
+    if (is_string($eventToken) && $eventToken !== '' && $domain !== null && $token !== null) {
+        rest_call($domain, $token, 'bizproc.event.send', [
+            'event_token' => $eventToken,
+            'return_values' => $resultPayload,
+            'log_message' => 'Activity завершилось с ошибкой: URL вебхука не заполнен.',
+        ]);
+    }
 
-if (!$webhookUrl) {
-    // Возвращаем ошибку в БП
     json_response([
         'success' => false,
         'error' => 'MISSING_WEBHOOK_URL',
-        'error_description' => 'Не указан URL вебхука в параметрах активности',
+        'result' => $resultPayload,
     ], 400);
 }
 
-// Вызываем вебхук
-app_log('Calling webhook', ['url' => $webhookUrl]);
+$requestBody = [
+    'activity_id' => $activityId,
+    'workflow_id' => $workflowId,
+    'document_id' => $documentId,
+    'portal_domain' => $domain,
+    'event_token' => $eventToken,
+];
 
-$ch = curl_init($webhookUrl);
+if (is_string($eventToken) && $eventToken !== '' && $domain !== null && $token !== null) {
+    rest_call($domain, $token, 'bizproc.activity.log', [
+        'event_token' => $eventToken,
+        'log_message' => 'Запускаем внешний вебхук из activity приложения.',
+    ]);
+}
+
+$responseHeaders = [];
+$ch = curl_init(trim($webhookUrl));
 curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_POST => true,
-    CURLOPT_POSTFIELDS => json_encode([
-        'activity_id' => $activityId,
-        'workflow_id' => $workflowId,
-        'document_id' => $documentId,
-        'portal_domain' => $domain,
-    ]),
-    CURLOPT_HTTPHEADER => ['Content-Type: application/json'],
-    CURLOPT_TIMEOUT => 30,
+    CURLOPT_POSTFIELDS => json_encode($requestBody, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+    CURLOPT_HTTPHEADER => [
+        'Content-Type: application/json',
+        'Accept: application/json, text/plain, */*',
+    ],
+    CURLOPT_TIMEOUT => 60,
     CURLOPT_SSL_VERIFYPEER => true,
+    CURLOPT_HEADERFUNCTION => static function ($curl, string $headerLine) use (&$responseHeaders): int {
+        $length = strlen($headerLine);
+        $headerLine = trim($headerLine);
+
+        if ($headerLine !== '' && str_contains($headerLine, ':')) {
+            [$name, $value] = explode(':', $headerLine, 2);
+            $responseHeaders[trim($name)] = trim($value);
+        }
+
+        return $length;
+    },
 ]);
 
-$response = curl_exec($ch);
-$error = curl_error($ch);
-$httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+$responseBody = curl_exec($ch);
+$curlError = curl_error($ch);
+$httpStatus = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
 curl_close($ch);
 
-app_log('Webhook response', ['http_code' => $httpCode, 'error' => $error, 'response' => substr((string)$response, 0, 1000)]);
+$normalizedResponse = is_string($responseBody) ? normalize_webhook_result($responseBody) : '';
+$resultPayload = [
+    'webhook_result' => $normalizedResponse,
+    'http_status' => $httpStatus,
+    'error_message' => $curlError !== '' ? $curlError : '',
+];
 
-if ($error) {
+app_log('WEBHOOK RESULT', [
+    'url' => $webhookUrl,
+    'http_status' => $httpStatus,
+    'curl_error' => $curlError,
+    'response_headers' => $responseHeaders,
+    'response_preview' => is_string($responseBody) ? substr($responseBody, 0, 1500) : '',
+]);
+
+if (is_string($eventToken) && $eventToken !== '' && $domain !== null && $token !== null) {
+    $eventResult = rest_call($domain, $token, 'bizproc.event.send', [
+        'event_token' => $eventToken,
+        'return_values' => $resultPayload,
+        'log_message' => $curlError === ''
+            ? sprintf('Внешний вебхук отработал, HTTP %d.', $httpStatus)
+            : 'Внешний вебхук завершился с ошибкой.',
+    ]);
+
     json_response([
-        'success' => false,
-        'error' => 'WEBHOOK_ERROR',
-        'error_description' => $error,
-    ], 500);
+        'success' => empty($eventResult['error']),
+        'event_result' => $eventResult,
+        'result' => $resultPayload,
+    ], empty($eventResult['error']) ? 200 : 500);
 }
 
-// Возвращаем результат в бизнес-процесс
 json_response([
-    'success' => true,
-    'result' => [
-        'webhook_result' => $response,
-    ],
-    'http_code' => $httpCode,
+    'success' => $curlError === '',
+    'result' => $resultPayload,
 ]);

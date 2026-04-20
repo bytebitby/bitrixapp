@@ -1,5 +1,6 @@
 <?php
 declare(strict_types=1);
+
 require __DIR__ . '/bootstrap.php';
 
 $data = get_request_data();
@@ -7,36 +8,60 @@ app_log('INSTALL HIT', ['request' => $data]);
 
 $domain = get_portal_domain($data);
 $token = get_auth_token($data);
+$handlerUrl = app_url('handler.php');
+$placementUrl = app_url('placement.php');
 
-if (!$domain || !$token) {
-    json_response(['success' => false, 'message' => 'No domain or token', 'domain' => $domain, 'has_token' => (bool)$token], 400);
+if ($handlerUrl === null || $placementUrl === null) {
+    render_install_page(false, [
+        'message' => 'Не удалось определить публичный URL приложения. Укажите APP_BASE_URL в переменных окружения или откройте install.php через внешний домен.',
+        'details' => [
+            'detected_base_url' => app_config()['app_base_url'],
+            'expected_handler' => $handlerUrl,
+            'expected_placement' => $placementUrl,
+        ],
+    ]);
 }
 
-// Определяем URL хендлера (должен быть публичным)
-$handlerUrl = 'http://89.169.154.151/handler.php';
+if ($domain === null || $token === null) {
+    render_install_page(false, [
+        'message' => 'Bitrix24 не передал данные авторизации. Откройте этот URL как путь первоначальной установки локального приложения.',
+        'details' => [
+            'domain' => $domain,
+            'has_token' => $token !== null,
+            'handler_url' => $handlerUrl,
+            'placement_url' => $placementUrl,
+        ],
+    ]);
+}
 
-$result = rest_call($domain, $token, 'bizproc.activity.add', [
-    'CODE' => 'universal_webhook',
-    'HANDLER' => $handlerUrl,
-    'AUTH_USER_ID' => 1,
-    'USE_SUBSCRIPTION' => 'Y',
-    'NAME' => ['ru' => 'Универсальный обработчик', 'en' => 'Universal Webhook Handler'],
-    'DESCRIPTION' => ['ru' => 'Вызывает вебхук и возвращает результат в переменные БП', 'en' => 'Calls webhook and returns result'],
-    'PROPERTIES' => [
-        'webhook_url' => [
-            'Name' => ['ru' => 'URL вебхука', 'en' => 'Webhook URL'],
-            'Type' => 'string',
-            'Required' => 'Y',
-            'Multiple' => 'N',
-        ],
-    ],
-    'RETURN_PROPERTIES' => [
-        'webhook_result' => [
-            'Name' => ['ru' => 'Результат', 'en' => 'Result'],
-            'Type' => 'string',
-            'Multiple' => 'N',
-        ],
+$fields = activity_fields($handlerUrl, $placementUrl);
+$addResult = rest_call($domain, $token, 'bizproc.activity.add', $fields);
+$finalResult = $addResult;
+$operation = 'add';
+
+if (!empty($addResult['error']) && in_array($addResult['error'], ['ERROR_ACTIVITY_ALREADY_INSTALLED', 'ERROR_ACTIVITY_ADD_FAILURE'], true)) {
+    $updateFields = $fields;
+    unset($updateFields['CODE']);
+
+    $finalResult = rest_call($domain, $token, 'bizproc.activity.update', [
+        'CODE' => app_config()['activity_code'],
+        'FIELDS' => $updateFields,
+    ]);
+    $operation = 'update';
+}
+
+$success = empty($finalResult['error']);
+
+render_install_page($success, [
+    'message' => $success
+        ? sprintf('Операция `%s` выполнена успешно. Activity `%s` готово к использованию в бизнес-процессах.', $operation, app_config()['activity_code'])
+        : 'Битрикс24 вернул ошибку при регистрации activity.',
+    'details' => [
+        'operation' => $operation,
+        'portal' => $domain,
+        'activity_code' => app_config()['activity_code'],
+        'handler_url' => $handlerUrl,
+        'placement_url' => $placementUrl,
+        'response' => $finalResult,
     ],
 ]);
-
-json_response(['success' => empty($result['error']), 'portal' => $domain, 'result' => $result]);
