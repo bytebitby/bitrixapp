@@ -4,6 +4,10 @@ declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
 
 $data = get_request_data();
+app_log('PLACEMENT HIT', [
+    'meta' => request_meta(),
+    'request' => $data,
+]);
 $placementOptionsRaw = request_value($data, 'PLACEMENT_OPTIONS') ?? request_value($data, 'placement_options') ?? '{}';
 $placementOptions = json_decode((string)$placementOptionsRaw, true);
 

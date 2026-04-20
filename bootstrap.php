@@ -71,7 +71,7 @@ function app_config(): array
     $config = [
         'app_base_url' => $baseUrl !== null ? rtrim($baseUrl, '/') : null,
         'log_file' => $logFile,
-        'activity_code' => env_value('APP_ACTIVITY_CODE', 'bytebit_webhook_activity'),
+        'activity_code' => env_value('APP_ACTIVITY_CODE', 'bytebit_webhook_activity_v2'),
     ];
 
     return $config;
@@ -132,6 +132,25 @@ function app_log(string $message, array $context = []): void
     );
 
     @file_put_contents($logFile, $line, FILE_APPEND);
+}
+
+function request_meta(): array
+{
+    $headers = [];
+    if (function_exists('getallheaders')) {
+        $rawHeaders = getallheaders();
+        if (is_array($rawHeaders)) {
+            $headers = $rawHeaders;
+        }
+    }
+
+    return [
+        'method' => $_SERVER['REQUEST_METHOD'] ?? null,
+        'uri' => $_SERVER['REQUEST_URI'] ?? null,
+        'remote_addr' => $_SERVER['REMOTE_ADDR'] ?? null,
+        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? null,
+        'headers' => $headers,
+    ];
 }
 
 function json_response(array $data, int $status = 200): void
@@ -272,31 +291,30 @@ function rest_call(string $domain, string $token, string $method, array $fields 
 
 function activity_fields(string $handlerUrl, string $placementUrl): array
 {
+    $filter = [
+        'INCLUDE' => [
+            ['crm'],
+            ['crm', 'CCrmDocumentDeal'],
+            ['crm', 'CCrmDocumentDeal', 'DEAL'],
+        ],
+    ];
+
+    if (env_value('APP_EXCLUDE_BOX', 'N') === 'Y') {
+        $filter['EXCLUDE'] = ['box'];
+    }
+
     return [
         'CODE' => app_config()['activity_code'],
         'HANDLER' => $handlerUrl,
         'AUTH_USER_ID' => 1,
         'USE_SUBSCRIPTION' => 'Y',
-        'USE_PLACEMENT' => 'Y',
-        'PLACEMENT_HANDLER' => $placementUrl,
-        'NAME' => [
-            'ru' => 'Вызов внешнего вебхука',
-            'en' => 'External Webhook Call',
-        ],
-        'DESCRIPTION' => [
-            'ru' => 'Вызывает внешний вебхук и возвращает полный ответ в дополнительные результаты бизнес-процесса',
-            'en' => 'Calls an external webhook and returns the full response into business process return values',
-        ],
+        'DOCUMENT_TYPE' => ['crm', 'CCrmDocumentDeal', 'DEAL'],
+        'NAME' => 'ByteBit Webhook',
+        'DESCRIPTION' => 'Calls an external webhook. Paste the target webhook URL into the standard activity field.',
         'PROPERTIES' => [
             'webhook_url' => [
-                'Name' => [
-                    'ru' => 'URL вебхука',
-                    'en' => 'Webhook URL',
-                ],
-                'Description' => [
-                    'ru' => 'Публичный URL, который будет вызван во время выполнения действия',
-                    'en' => 'Public URL that will be called when the activity is executed',
-                ],
+                'Name' => 'Webhook URL',
+                'Description' => 'Paste the public webhook URL here.',
                 'Type' => 'string',
                 'Required' => 'Y',
                 'Multiple' => 'N',
@@ -305,41 +323,25 @@ function activity_fields(string $handlerUrl, string $placementUrl): array
         ],
         'RETURN_PROPERTIES' => [
             'webhook_result' => [
-                'Name' => [
-                    'ru' => 'Полный ответ вебхука',
-                    'en' => 'Webhook full response',
-                ],
+                'Name' => 'Webhook response',
                 'Type' => 'text',
                 'Multiple' => 'N',
                 'Default' => null,
             ],
             'http_status' => [
-                'Name' => [
-                    'ru' => 'HTTP статус',
-                    'en' => 'HTTP status',
-                ],
+                'Name' => 'HTTP status',
                 'Type' => 'int',
                 'Multiple' => 'N',
                 'Default' => null,
             ],
             'error_message' => [
-                'Name' => [
-                    'ru' => 'Ошибка',
-                    'en' => 'Error message',
-                ],
+                'Name' => 'Error message',
                 'Type' => 'text',
                 'Multiple' => 'N',
                 'Default' => null,
             ],
         ],
-        'DOCUMENT_TYPE' => ['crm', 'CCrmDocumentDeal', 'DEAL'],
-        'FILTER' => [
-            'INCLUDE' => [
-                ['crm'],
-                ['lists'],
-            ],
-            'EXCLUDE' => ['box'],
-        ],
+        'FILTER' => $filter,
     ];
 }
 
@@ -367,15 +369,42 @@ function render_install_page(bool $success, array $context = []): never
     $title = $success ? 'Установка завершена' : 'Установка не завершена';
     $accent = $success ? '#1f7a45' : '#a62727';
     $statusText = $success ? 'Активити зарегистрировано в Битрикс24.' : 'Не удалось завершить установку приложения.';
-    $message = $context['message'] ?? '';
+    $message = is_string($context['message'] ?? null) ? $context['message'] : '';
     $details = safe_json_for_html($context['details'] ?? []);
 
     $finishScript = $success ? <<<HTML
 <script src="//api.bitrix24.com/api/v1/"></script>
 <script>
-if (window.BX24 && typeof BX24.installFinish === 'function') {
-    BX24.installFinish();
+var finishButton = document.getElementById('finish-install');
+var countdownNode = document.getElementById('finish-countdown');
+var secondsLeft = 15;
+
+function updateCountdown() {
+    if (countdownNode) {
+        countdownNode.textContent = String(secondsLeft);
+    }
 }
+
+function finishInstall() {
+    if (window.BX24 && typeof BX24.installFinish === 'function') {
+        BX24.installFinish();
+    }
+}
+
+if (finishButton) {
+    finishButton.addEventListener('click', finishInstall);
+}
+
+updateCountdown();
+var timer = setInterval(function () {
+    secondsLeft -= 1;
+    updateCountdown();
+
+    if (secondsLeft <= 0) {
+        clearInterval(timer);
+        finishInstall();
+    }
+}, 1000);
 </script>
 HTML : '';
 
@@ -389,10 +418,8 @@ HTML : '';
     <style>
         :root {
             color-scheme: light;
-            --bg: #f3f5f8;
             --card: #ffffff;
             --text: #17202a;
-            --muted: #5b6674;
             --accent: {$accent};
             --border: #d8dee8;
         }
@@ -430,6 +457,29 @@ HTML : '';
         p {
             margin: 0 0 12px;
         }
+        .actions {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin: 18px 0 16px;
+        }
+        .button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            border-radius: 10px;
+            padding: 10px 16px;
+            background: var(--accent);
+            color: #fff;
+            font: inherit;
+            font-weight: 700;
+            cursor: pointer;
+        }
+        .hint {
+            color: #5b6674;
+            font-size: 14px;
+        }
         pre {
             overflow: auto;
             background: #0f1720;
@@ -447,6 +497,10 @@ HTML : '';
             <h1>{$title}</h1>
             <p>{$statusText}</p>
             <p>{$message}</p>
+            <div class="actions">
+                <button class="button" id="finish-install" type="button">Завершить установку</button>
+                <div class="hint">Окно закроется автоматически через <span id="finish-countdown">15</span> сек.</div>
+            </div>
             <pre>{$details}</pre>
         </div>
     </main>
@@ -457,4 +511,89 @@ HTML;
 
     $statusCode = (int)($context['status'] ?? ($success ? 200 : 500));
     html_response($html, $statusCode);
+}
+
+function render_info_page(string $title, string $message, array $details = [], int $status = 200): never
+{
+    $detailsJson = safe_json_for_html($details);
+
+    $html = <<<HTML
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{$title}</title>
+    <style>
+        :root {
+            color-scheme: light;
+            --card: #ffffff;
+            --text: #17324d;
+            --muted: #607086;
+            --border: #d9e2ec;
+            --accent: #1565c0;
+        }
+        body {
+            margin: 0;
+            min-height: 100vh;
+            background: linear-gradient(180deg, #eef5fb 0%, #f8fbff 100%);
+            color: var(--text);
+            font: 16px/1.5 "Segoe UI", Arial, sans-serif;
+        }
+        main {
+            max-width: 860px;
+            margin: 0 auto;
+            padding: 32px 16px 48px;
+        }
+        .card {
+            background: var(--card);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            box-shadow: 0 16px 40px rgba(19, 31, 55, 0.08);
+            padding: 24px;
+        }
+        .badge {
+            display: inline-block;
+            margin-bottom: 16px;
+            padding: 6px 12px;
+            border-radius: 999px;
+            background: rgba(21, 101, 192, 0.08);
+            color: var(--accent);
+            font-weight: 700;
+        }
+        h1 {
+            margin: 0 0 12px;
+            font-size: 28px;
+        }
+        p {
+            margin: 0 0 12px;
+        }
+        .muted {
+            color: var(--muted);
+        }
+        pre {
+            overflow: auto;
+            background: #0f1720;
+            color: #d8f4ff;
+            border-radius: 12px;
+            padding: 16px;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <main>
+        <div class="card">
+            <div class="badge">Bitrix24 Local App</div>
+            <h1>{$title}</h1>
+            <p>{$message}</p>
+            <p class="muted">Для установки используйте <code>install.php</code>, а для настройки activity внутри бизнес-процесса Bitrix24 откроет <code>placement.php</code> автоматически.</p>
+            <pre>{$detailsJson}</pre>
+        </div>
+    </main>
+</body>
+</html>
+HTML;
+
+    html_response($html, $status);
 }

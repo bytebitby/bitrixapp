@@ -4,7 +4,10 @@ declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
 
 $data = get_request_data();
-app_log('HANDLER HIT', ['request' => $data]);
+app_log('HANDLER HIT', [
+    'meta' => request_meta(),
+    'request' => $data,
+]);
 
 $domain = get_portal_domain($data);
 $token = get_auth_token($data);
@@ -13,6 +16,26 @@ $activityId = request_value($data, 'activity_id') ?? request_value($data, 'ACTIV
 $workflowId = request_value($data, 'workflow_id') ?? request_value($data, 'WORKFLOW_ID');
 $documentId = request_value($data, 'document_id') ?? request_value($data, 'DOCUMENT_ID');
 $webhookUrl = request_value($data, 'properties.webhook_url') ?? request_value($data, 'webhook_url');
+
+$isBusinessProcessCall = (
+    (is_string($eventToken) && $eventToken !== '')
+    || $activityId !== null
+    || $workflowId !== null
+    || request_value($data, 'properties') !== null
+);
+
+if (!$isBusinessProcessCall) {
+    render_info_page(
+        'Это служебный обработчик activity',
+        'Страница handler.php не предназначена для ручного открытия. Bitrix24 вызывает этот URL автоматически во время выполнения бизнес-процесса.',
+        [
+            'handler_url' => app_url('handler.php'),
+            'placement_url' => app_url('placement.php'),
+            'activity_code' => app_config()['activity_code'],
+            'request_keys' => array_keys($data),
+        ]
+    );
+}
 
 if (!is_string($webhookUrl) || trim($webhookUrl) === '') {
     $resultPayload = [
