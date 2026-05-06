@@ -1,6 +1,6 @@
 param(
-    [string]$Target = "root@89.169.154.151",
-    [string]$RemotePath = "/var/www/html/bitrixapp"
+    [string]$Target = "root@91.230.94.22",
+    [string]$RemotePath = "/var/www/bitrixapp/current"
 )
 
 $files = @(
@@ -8,6 +8,9 @@ $files = @(
     "install.php",
     "handler.php",
     "placement.php",
+    "index.php",
+    "index.html",
+    "debug_log.php",
     "README.md",
     ".env.example"
 )

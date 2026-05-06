@@ -15,13 +15,16 @@ $handlerUrl = app_url('handler.php');
 $placementUrl = app_url('placement.php');
 $activityCodesToCleanup = array_values(array_unique([
     app_config()['activity_code'],
+    app_config()['parse_activity_code'],
     'bytebit_webhook_activity',
+    'bytebit_webhook_activity_v2',
+    'bytebit_webhook_response_parser_v1',
 ]));
 
 if ($handlerUrl === null || $placementUrl === null) {
     render_install_page(false, [
         'status' => 200,
-        'message' => 'Не удалось определить публичный URL приложения. Укажите APP_BASE_URL в переменных окружения или откройте install.php через внешний домен.',
+        'message' => 'Не удалось определить публичный URL приложения. Укажите APP_BASE_URL в .env или откройте install.php через внешний домен.',
         'details' => [
             'detected_base_url' => app_config()['app_base_url'],
             'expected_handler' => $handlerUrl,
@@ -43,13 +46,13 @@ if ($domain === null || $token === null) {
     ]);
 }
 
-$fields = activity_fields($handlerUrl, $placementUrl);
+$activityDefinitions = activity_definitions($handlerUrl, $placementUrl);
 app_log('INSTALL FIELDS', [
-    'activity_code' => app_config()['activity_code'],
-    'fields' => $fields,
+    'activity_codes' => array_keys($activityDefinitions),
+    'fields' => $activityDefinitions,
 ]);
-$cleanupResults = [];
 
+$cleanupResults = [];
 foreach ($activityCodesToCleanup as $codeToCleanup) {
     $cleanupResults[$codeToCleanup] = rest_call($domain, $token, 'bizproc.activity.delete', [
         'CODE' => $codeToCleanup,
@@ -60,60 +63,40 @@ app_log('INSTALL CLEANUP RESULTS', [
     'cleanup_results' => $cleanupResults,
 ]);
 
-$addResult = rest_call($domain, $token, 'bizproc.activity.add', $fields);
-$finalResult = $addResult;
-$operation = 'add';
-app_log('INSTALL ADD RESULT', [
-    'result' => $addResult,
-]);
+$activityResults = [];
+foreach ($activityDefinitions as $activityCode => $fields) {
+    $activityResults[$activityCode] = rest_call($domain, $token, 'bizproc.activity.add', $fields);
+}
 
-if (!empty($addResult['error']) && in_array($addResult['error'], ['ERROR_ACTIVITY_ALREADY_INSTALLED', 'ERROR_ACTIVITY_ADD_FAILURE'], true)) {
-    $deleteResult = rest_call($domain, $token, 'bizproc.activity.delete', [
-        'CODE' => app_config()['activity_code'],
-    ]);
-
-    if (empty($deleteResult['error']) || ($deleteResult['error'] ?? null) === 'ERROR_ACTIVITY_NOT_FOUND') {
-        $finalResult = rest_call($domain, $token, 'bizproc.activity.add', $fields);
-        $operation = 'delete+add';
-        app_log('INSTALL RETRY ADD RESULT', [
-            'result' => $finalResult,
-        ]);
-    } else {
-        $updateFields = $fields;
-        unset($updateFields['CODE']);
-
-        $finalResult = rest_call($domain, $token, 'bizproc.activity.update', [
-            'CODE' => app_config()['activity_code'],
-            'FIELDS' => $updateFields,
-        ]);
-        $operation = 'update';
-        app_log('INSTALL UPDATE RESULT', [
-            'result' => $finalResult,
-        ]);
+$operation = 'delete+add';
+$success = true;
+foreach ($activityResults as $result) {
+    if (!empty($result['error'])) {
+        $success = false;
+        break;
     }
 }
 
-$success = empty($finalResult['error']);
 $registeredActivities = rest_call($domain, $token, 'bizproc.activity.list', []);
 app_log('INSTALL FINAL STATE', [
     'success' => $success,
     'operation' => $operation,
-    'final_result' => $finalResult,
+    'activity_results' => $activityResults,
     'activity_list' => $registeredActivities,
 ]);
 
 render_install_page($success, [
     'message' => $success
-        ? sprintf('Операция `%s` выполнена успешно. Activity `%s` готово к использованию в бизнес-процессах.', $operation, app_config()['activity_code'])
+        ? sprintf('Установка выполнена. В Битрикс24 добавлены activity `%s` и `%s`.', app_config()['activity_code'], app_config()['parse_activity_code'])
         : 'Битрикс24 вернул ошибку при регистрации activity.',
     'details' => [
         'operation' => $operation,
         'portal' => $domain,
-        'activity_code' => app_config()['activity_code'],
+        'activity_codes' => array_keys($activityDefinitions),
         'handler_url' => $handlerUrl,
         'placement_url' => $placementUrl,
         'cleanup_results' => $cleanupResults,
-        'response' => $finalResult,
+        'responses' => $activityResults,
         'activity_list' => $registeredActivities,
     ],
 ]);

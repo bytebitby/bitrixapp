@@ -72,6 +72,7 @@ function app_config(): array
         'app_base_url' => $baseUrl !== null ? rtrim($baseUrl, '/') : null,
         'log_file' => $logFile,
         'activity_code' => env_value('APP_ACTIVITY_CODE', 'bytebit_webhook_activity_v2'),
+        'parse_activity_code' => env_value('APP_PARSE_ACTIVITY_CODE', 'bytebit_webhook_response_parser_v1'),
     ];
 
     return $config;
@@ -206,6 +207,39 @@ function request_value(array $data, string $key, mixed $default = null): mixed
     return $value;
 }
 
+function activity_property(array $data, string $name, mixed $default = null): mixed
+{
+    foreach ([
+        'properties.' . $name,
+        'PROPERTIES.' . $name,
+        $name,
+    ] as $key) {
+        $value = request_value($data, $key, null);
+        if ($value !== null) {
+            return $value;
+        }
+    }
+
+    return $default;
+}
+
+function stringify_value(mixed $value): string
+{
+    if ($value === null) {
+        return '';
+    }
+
+    if (is_bool($value)) {
+        return $value ? 'Y' : 'N';
+    }
+
+    if (is_scalar($value)) {
+        return trim((string)$value);
+    }
+
+    return (string)json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+}
+
 function get_auth_token(array $data): ?string
 {
     foreach (
@@ -289,7 +323,7 @@ function rest_call(string $domain, string $token, string $method, array $fields 
     return $decoded;
 }
 
-function activity_fields(string $handlerUrl, string $placementUrl): array
+function activity_document_filter(): array
 {
     $filter = [
         'INCLUDE' => [
@@ -303,22 +337,88 @@ function activity_fields(string $handlerUrl, string $placementUrl): array
         $filter['EXCLUDE'] = ['box'];
     }
 
+    return $filter;
+}
+
+function webhook_activity_fields(string $handlerUrl, string $placementUrl): array
+{
     return [
         'CODE' => app_config()['activity_code'],
         'HANDLER' => $handlerUrl,
         'AUTH_USER_ID' => 1,
         'USE_SUBSCRIPTION' => 'Y',
         'DOCUMENT_TYPE' => ['crm', 'CCrmDocumentDeal', 'DEAL'],
-        'NAME' => 'ByteBit Webhook',
-        'DESCRIPTION' => 'Calls an external webhook. Paste the target webhook URL into the standard activity field.',
+        'NAME' => 'ByteBit HTTP-запрос',
+        'DESCRIPTION' => 'Выполняет внешний HTTP/webhook-запрос с методом, заголовками, query-параметрами и телом запроса.',
         'PROPERTIES' => [
             'webhook_url' => [
                 'Name' => 'Webhook URL',
-                'Description' => 'Paste the public webhook URL here.',
+                'Description' => 'Можно просто вставить URL в одну строку, как раньше.',
                 'Type' => 'string',
                 'Required' => 'Y',
                 'Multiple' => 'N',
                 'Default' => '',
+            ],
+            'http_method' => [
+                'Name' => 'HTTP method',
+                'Description' => 'Метод запроса.',
+                'Type' => 'select',
+                'Required' => 'N',
+                'Multiple' => 'N',
+                'Default' => 'POST',
+                'Options' => [
+                    'GET' => 'GET',
+                    'POST' => 'POST',
+                    'PUT' => 'PUT',
+                    'PATCH' => 'PATCH',
+                    'DELETE' => 'DELETE',
+                ],
+            ],
+            'query_params' => [
+                'Name' => 'Query params JSON',
+                'Description' => 'JSON-объект query-параметров, например {"id":"123"}.',
+                'Type' => 'text',
+                'Required' => 'N',
+                'Multiple' => 'N',
+                'Default' => '',
+            ],
+            'request_headers' => [
+                'Name' => 'Headers JSON',
+                'Description' => 'JSON-объект заголовков, например {"Authorization":"Bearer token"}.',
+                'Type' => 'text',
+                'Required' => 'N',
+                'Multiple' => 'N',
+                'Default' => '',
+            ],
+            'body_mode' => [
+                'Name' => 'Body mode',
+                'Description' => 'Формат тела запроса.',
+                'Type' => 'select',
+                'Required' => 'N',
+                'Multiple' => 'N',
+                'Default' => 'json',
+                'Options' => [
+                    'none' => 'Без тела',
+                    'json' => 'JSON',
+                    'raw' => 'Raw text',
+                    'form' => 'Form URL encoded',
+                ],
+            ],
+            'request_body' => [
+                'Name' => 'Request body',
+                'Description' => 'JSON/raw/form тело запроса. Если пусто, будет отправлен стандартный контекст БП.',
+                'Type' => 'text',
+                'Required' => 'N',
+                'Multiple' => 'N',
+                'Default' => '',
+            ],
+            'timeout_seconds' => [
+                'Name' => 'Timeout seconds',
+                'Description' => 'Таймаут внешнего запроса в секундах.',
+                'Type' => 'int',
+                'Required' => 'N',
+                'Multiple' => 'N',
+                'Default' => 60,
             ],
         ],
         'RETURN_PROPERTIES' => [
@@ -340,8 +440,101 @@ function activity_fields(string $handlerUrl, string $placementUrl): array
                 'Multiple' => 'N',
                 'Default' => null,
             ],
+            'response_headers' => [
+                'Name' => 'Response headers',
+                'Type' => 'text',
+                'Multiple' => 'N',
+                'Default' => null,
+            ],
+            'duration_seconds' => [
+                'Name' => 'Duration seconds',
+                'Type' => 'string',
+                'Multiple' => 'N',
+                'Default' => null,
+            ],
         ],
-        'FILTER' => $filter,
+        'FILTER' => activity_document_filter(),
+    ];
+}
+
+function parser_activity_fields(string $handlerUrl, string $placementUrl): array
+{
+    return [
+        'CODE' => app_config()['parse_activity_code'],
+        'HANDLER' => $handlerUrl,
+        'AUTH_USER_ID' => 1,
+        'USE_SUBSCRIPTION' => 'Y',
+        'DOCUMENT_TYPE' => ['crm', 'CCrmDocumentDeal', 'DEAL'],
+        'NAME' => 'ByteBit Парсинг JSON',
+        'DESCRIPTION' => 'Достает значение из JSON-ответа по пути вроде data.id или $.result.items[0].id.',
+        'PROPERTIES' => [
+            'source_json' => [
+                'Name' => 'JSON response',
+                'Description' => 'Ответ вебхука или другая JSON-строка.',
+                'Type' => 'text',
+                'Required' => 'Y',
+                'Multiple' => 'N',
+                'Default' => '',
+            ],
+            'json_path' => [
+                'Name' => 'JSON path',
+                'Description' => 'Что вытащить из ответа: id, data.id, $.result.items[0].id.',
+                'Type' => 'string',
+                'Required' => 'Y',
+                'Multiple' => 'N',
+                'Default' => '',
+            ],
+            'default_value' => [
+                'Name' => 'Default value',
+                'Description' => 'Что вернуть, если путь не найден.',
+                'Type' => 'string',
+                'Required' => 'N',
+                'Multiple' => 'N',
+                'Default' => '',
+            ],
+            'output_as_json' => [
+                'Name' => 'Output as JSON',
+                'Description' => 'Y - вернуть найденный массив/объект как JSON.',
+                'Type' => 'bool',
+                'Required' => 'N',
+                'Multiple' => 'N',
+                'Default' => 'N',
+            ],
+        ],
+        'RETURN_PROPERTIES' => [
+            'parsed_value' => [
+                'Name' => 'Parsed value',
+                'Type' => 'text',
+                'Multiple' => 'N',
+                'Default' => null,
+            ],
+            'path_found' => [
+                'Name' => 'Path found',
+                'Type' => 'string',
+                'Multiple' => 'N',
+                'Default' => null,
+            ],
+            'parse_error' => [
+                'Name' => 'Parse error',
+                'Type' => 'text',
+                'Multiple' => 'N',
+                'Default' => null,
+            ],
+        ],
+        'FILTER' => activity_document_filter(),
+    ];
+}
+
+function activity_fields(string $handlerUrl, string $placementUrl): array
+{
+    return webhook_activity_fields($handlerUrl, $placementUrl);
+}
+
+function activity_definitions(string $handlerUrl, string $placementUrl): array
+{
+    return [
+        app_config()['activity_code'] => webhook_activity_fields($handlerUrl, $placementUrl),
+        app_config()['parse_activity_code'] => parser_activity_fields($handlerUrl, $placementUrl),
     ];
 }
 
@@ -355,6 +548,61 @@ function normalize_webhook_result(string $responseBody): string
     return $responseBody;
 }
 
+function extract_json_path(mixed $source, string $path, bool &$found): mixed
+{
+    $found = false;
+    $path = trim($path);
+
+    if ($path === '' || $path === '$') {
+        $found = true;
+        return $source;
+    }
+
+    $path = preg_replace('/^\$\./', '', $path);
+    $path = preg_replace('/^\$/', '', (string)$path);
+    $path = preg_replace('/\[(\d+)\]/', '.$1', (string)$path);
+    $path = preg_replace('/\[(["\'])(.*?)\1\]/', '.$2', (string)$path);
+    $segments = array_values(array_filter(explode('.', (string)$path), static fn (string $item): bool => $item !== ''));
+
+    $value = $source;
+    foreach ($segments as $segment) {
+        if (is_array($value) && array_key_exists($segment, $value)) {
+            $value = $value[$segment];
+            continue;
+        }
+
+        if (is_array($value) && ctype_digit($segment)) {
+            $index = (int)$segment;
+            if (array_key_exists($index, $value)) {
+                $value = $value[$index];
+                continue;
+            }
+        }
+
+        return null;
+    }
+
+    $found = true;
+    return $value;
+}
+
+function value_for_bizproc(mixed $value, bool $asJson = false): string
+{
+    if ($asJson || is_array($value) || is_object($value)) {
+        return (string)json_encode($value, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
+    }
+
+    if ($value === null) {
+        return '';
+    }
+
+    if (is_bool($value)) {
+        return $value ? 'true' : 'false';
+    }
+
+    return (string)$value;
+}
+
 function safe_json_for_html(mixed $value): string
 {
     return htmlspecialchars(
@@ -366,6 +614,69 @@ function safe_json_for_html(mixed $value): string
 
 function render_install_page(bool $success, array $context = []): never
 {
+    $title = $success ? 'ByteBit Webhook установлен' : 'ByteBit Webhook: установка';
+    $statusCode = (int)($context['status'] ?? ($success ? 200 : 500));
+    $message = is_string($context['message'] ?? null) ? $context['message'] : '';
+    $details = safe_json_for_html($context['details'] ?? []);
+    $finishScript = $success ? <<<HTML
+<script src="//api.bitrix24.com/api/v1/"></script>
+<script>
+setTimeout(function () {
+    if (window.BX24 && typeof BX24.installFinish === 'function') {
+        BX24.installFinish();
+    }
+}, 1200);
+</script>
+HTML : '';
+
+    $html = <<<HTML
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{$title}</title>
+    <style>
+        :root { color-scheme: light; --bg: #f5f7fb; --card: #fff; --text: #17202a; --muted: #5d6b7a; --line: #d7dee8; --accent: #0f6b57; }
+        body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 "Segoe UI", Arial, sans-serif; }
+        main { max-width: 900px; margin: 0 auto; padding: 24px 16px 42px; }
+        section { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 22px; }
+        h1 { margin: 0 0 10px; font-size: 28px; line-height: 1.2; }
+        h2 { margin: 20px 0 8px; font-size: 18px; }
+        p { margin: 0 0 12px; color: var(--muted); }
+        ol { margin: 0; padding-left: 22px; }
+        li { margin: 8px 0; }
+        code { padding: 2px 6px; border-radius: 4px; background: rgba(15, 23, 32, 0.07); }
+        details { margin-top: 16px; }
+        summary { cursor: pointer; color: var(--accent); font-weight: 700; }
+        pre { overflow: auto; background: #111827; color: #d8f4ff; border-radius: 8px; padding: 14px; font-size: 13px; }
+    </style>
+</head>
+<body>
+    <main>
+        <section>
+            <h1>{$title}</h1>
+            <p>{$message}</p>
+            <h2>Короткий гайд</h2>
+            <ol>
+                <li>В дизайнере бизнес-процессов добавьте <code>ByteBit HTTP-запрос</code>.</li>
+                <li>Для простого сценария вставьте только URL вебхука. Для сложного заполните метод, headers, query, body и timeout.</li>
+                <li>Успешный ответ попадет в <code>webhook_result</code>, ошибка отдельно в <code>error_message</code>, время выполнения в <code>duration_seconds</code>.</li>
+                <li>Чтобы вытащить поле из ответа, добавьте <code>ByteBit Парсинг JSON</code>, передайте туда <code>webhook_result</code> и укажите путь вроде <code>id</code> или <code>data.id</code>.</li>
+                <li>Значение из парсера берите из <code>parsed_value</code> и записывайте в переменную БП.</li>
+            </ol>
+            <details>
+                <summary>Технические детали установки</summary>
+                <pre>{$details}</pre>
+            </details>
+        </section>
+    </main>
+    {$finishScript}
+</body>
+</html>
+HTML;
+
+    html_response($html, $statusCode);
     $title = $success ? 'Установка завершена' : 'Установка не завершена';
     $accent = $success ? '#1f7a45' : '#a62727';
     $statusText = $success ? 'Активити зарегистрировано в Битрикс24.' : 'Не удалось завершить установку приложения.';
