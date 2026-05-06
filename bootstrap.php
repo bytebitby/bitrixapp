@@ -349,11 +349,11 @@ function webhook_activity_fields(string $handlerUrl, string $placementUrl): arra
         'USE_SUBSCRIPTION' => 'Y',
         'DOCUMENT_TYPE' => ['crm', 'CCrmDocumentDeal', 'DEAL'],
         'NAME' => 'ByteBit HTTP-запрос',
-        'DESCRIPTION' => 'Вызывает внешний вебхук или API. Обычно достаточно URL, метода GET/POST и JSON-тела.',
+        'DESCRIPTION' => 'Отправляет GET или POST во внешний вебхук/API.',
         'PROPERTIES' => [
             'webhook_url' => [
                 'Name' => 'URL вебхука',
-                'Description' => 'Вставьте полный URL. Query-параметры можно указать прямо в URL.',
+                'Description' => 'Полный адрес вебхука или API.',
                 'Type' => 'string',
                 'Required' => 'Y',
                 'Multiple' => 'N',
@@ -361,7 +361,7 @@ function webhook_activity_fields(string $handlerUrl, string $placementUrl): arra
             ],
             'http_method' => [
                 'Name' => 'Метод запроса',
-                'Description' => 'GET - получить данные, POST - отправить JSON.',
+                'Description' => 'GET или POST.',
                 'Type' => 'select',
                 'Required' => 'N',
                 'Multiple' => 'N',
@@ -373,7 +373,7 @@ function webhook_activity_fields(string $handlerUrl, string $placementUrl): arra
             ],
             'request_body' => [
                 'Name' => 'JSON для отправки',
-                'Description' => 'Тело POST-запроса. Если оставить пустым, отправится стандартный контекст бизнес-процесса.',
+                'Description' => 'Тело POST-запроса. Формат: JSON.',
                 'Type' => 'text',
                 'Required' => 'N',
                 'Multiple' => 'N',
@@ -381,7 +381,7 @@ function webhook_activity_fields(string $handlerUrl, string $placementUrl): arra
             ],
             'request_headers' => [
                 'Name' => 'Заголовки JSON',
-                'Description' => 'Необязательно. Например {"Authorization":"Bearer token"}.',
+                'Description' => 'Необязательно. Формат: JSON-объект.',
                 'Type' => 'text',
                 'Required' => 'N',
                 'Multiple' => 'N',
@@ -389,7 +389,7 @@ function webhook_activity_fields(string $handlerUrl, string $placementUrl): arra
             ],
             'timeout_seconds' => [
                 'Name' => 'Таймаут, сек',
-                'Description' => 'Сколько секунд ждать ответ вебхука.',
+                'Description' => 'Сколько секунд ждать ответ.',
                 'Type' => 'int',
                 'Required' => 'N',
                 'Multiple' => 'N',
@@ -441,11 +441,11 @@ function parser_activity_fields(string $handlerUrl, string $placementUrl): array
         'USE_SUBSCRIPTION' => 'Y',
         'DOCUMENT_TYPE' => ['crm', 'CCrmDocumentDeal', 'DEAL'],
         'NAME' => 'ByteBit Парсинг JSON',
-        'DESCRIPTION' => 'Достает одно нужное значение из JSON-ответа и возвращает его в переменную бизнес-процесса.',
+        'DESCRIPTION' => 'Достает одно значение из JSON-ответа.',
         'PROPERTIES' => [
             'source_json' => [
                 'Name' => 'JSON-ответ',
-                'Description' => 'Вставьте сюда ответ вебхука, обычно переменную Ответ вебхука из первой activity.',
+                'Description' => 'JSON-строка для разбора.',
                 'Type' => 'text',
                 'Required' => 'Y',
                 'Multiple' => 'N',
@@ -453,7 +453,7 @@ function parser_activity_fields(string $handlerUrl, string $placementUrl): array
             ],
             'json_path' => [
                 'Name' => 'Что вытащить',
-                'Description' => 'Путь к полю: id, data.id или $.items[0].id.',
+                'Description' => 'Путь к полю: id, data.id, items[0].id.',
                 'Type' => 'string',
                 'Required' => 'Y',
                 'Multiple' => 'N',
@@ -461,7 +461,7 @@ function parser_activity_fields(string $handlerUrl, string $placementUrl): array
             ],
             'default_value' => [
                 'Name' => 'Если не найдено',
-                'Description' => 'Значение, которое вернется, если такого поля нет.',
+                'Description' => 'Вернется, если путь не найден.',
                 'Type' => 'string',
                 'Required' => 'N',
                 'Multiple' => 'N',

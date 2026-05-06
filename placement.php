@@ -142,13 +142,13 @@ function current_value(array $current, string $key, string $default = ''): strin
         <?php if (!$isParserPlacement): ?>
         <section class="panel">
             <h1>HTTP-запрос</h1>
-            <p>Для обычного вебхука достаточно вставить URL. Остальные поля нужны только если сервис требует метод POST, JSON или заголовок авторизации.</p>
+            <p>Отправляет GET или POST во внешний вебхук/API.</p>
 
             <div class="grid two">
                 <div><label for="webhook-url">URL вебхука</label></div>
                 <div>
                     <input id="webhook-url" data-prop="webhook_url" type="url" placeholder="https://example.com/webhook" value="<?= htmlspecialchars(current_value($current, 'webhook_url'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-                    <div class="hint">Query-параметры можно писать прямо в URL: <code>?id=123</code>.</div>
+                    <div class="hint">Query-параметры пишутся прямо в URL: <code>?id=123</code>.</div>
                 </div>
 
                 <div><label for="http-method">Метод</label></div>
@@ -158,19 +158,19 @@ function current_value(array $current, string $key, string $default = ''): strin
                             <option value="<?= $method ?>" <?= current_value($current, 'http_method', 'POST') === $method ? 'selected' : '' ?>><?= $method ?></option>
                         <?php endforeach; ?>
                     </select>
-                    <div class="hint"><code>GET</code> получает данные, <code>POST</code> отправляет JSON.</div>
+                    <div class="hint"><code>GET</code> получает данные. <code>POST</code> отправляет JSON.</div>
                 </div>
 
                 <div><label for="request-body">JSON для отправки</label></div>
                 <div>
                     <textarea id="request-body" data-prop="request_body" placeholder='{"id":"{{ID}}","source":"bitrix24"}'><?= htmlspecialchars(current_value($current, 'request_body'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
-                    <div class="hint">Можно оставить пустым: тогда POST отправит стандартные данные бизнес-процесса.</div>
+                    <div class="hint">Пустое поле отправит стандартный контекст бизнес-процесса.</div>
                 </div>
 
                 <div><label for="request-headers">Заголовки JSON</label></div>
                 <div>
                     <textarea id="request-headers" data-prop="request_headers" placeholder='{"Authorization":"Bearer token"}'><?= htmlspecialchars(current_value($current, 'request_headers'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
-                    <div class="hint">Необязательное поле. Заполняйте только если API требует токен или свой заголовок.</div>
+                    <div class="hint">Заполняется только для токена или специальных заголовков.</div>
                 </div>
 
                 <div><label for="timeout-seconds">Таймаут, сек</label></div>
@@ -186,13 +186,13 @@ function current_value(array $current, string $key, string $default = ''): strin
         <?php if ($isParserPlacement): ?>
         <section class="panel">
             <h1>Парсинг JSON</h1>
-            <p>Эта activity берет JSON-ответ и достает из него одно поле, чтобы записать значение в переменную бизнес-процесса.</p>
+            <p>Достает одно значение из JSON-ответа.</p>
 
             <div class="grid two">
                 <div><label for="source-json">JSON-ответ</label></div>
                 <div>
                     <textarea id="source-json" data-prop="source_json" placeholder='{"id":123,"data":{"deal":"D-1"}}'><?= htmlspecialchars(current_value($current, 'source_json'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
-                    <div class="hint">Обычно сюда подставляют результат <code>Ответ вебхука</code> из первой activity.</div>
+                    <div class="hint">Сюда подставляется результат <code>Ответ вебхука</code>.</div>
                 </div>
 
                 <div><label for="json-path">Что вытащить</label></div>
