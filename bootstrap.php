@@ -349,19 +349,19 @@ function webhook_activity_fields(string $handlerUrl, string $placementUrl): arra
         'USE_SUBSCRIPTION' => 'Y',
         'DOCUMENT_TYPE' => ['crm', 'CCrmDocumentDeal', 'DEAL'],
         'NAME' => 'ByteBit HTTP-запрос',
-        'DESCRIPTION' => 'Выполняет внешний HTTP/webhook-запрос с методом, заголовками, query-параметрами и телом запроса.',
+        'DESCRIPTION' => 'Вызывает внешний вебхук или API. Обычно достаточно URL, метода GET/POST и JSON-тела.',
         'PROPERTIES' => [
             'webhook_url' => [
-                'Name' => 'Webhook URL',
-                'Description' => 'Можно просто вставить URL в одну строку, как раньше.',
+                'Name' => 'URL вебхука',
+                'Description' => 'Вставьте полный URL. Query-параметры можно указать прямо в URL.',
                 'Type' => 'string',
                 'Required' => 'Y',
                 'Multiple' => 'N',
                 'Default' => '',
             ],
             'http_method' => [
-                'Name' => 'HTTP method',
-                'Description' => 'Метод запроса.',
+                'Name' => 'Метод запроса',
+                'Description' => 'GET - получить данные, POST - отправить JSON.',
                 'Type' => 'select',
                 'Required' => 'N',
                 'Multiple' => 'N',
@@ -369,52 +369,27 @@ function webhook_activity_fields(string $handlerUrl, string $placementUrl): arra
                 'Options' => [
                     'GET' => 'GET',
                     'POST' => 'POST',
-                    'PUT' => 'PUT',
-                    'PATCH' => 'PATCH',
-                    'DELETE' => 'DELETE',
                 ],
             ],
-            'query_params' => [
-                'Name' => 'Query params JSON',
-                'Description' => 'JSON-объект query-параметров, например {"id":"123"}.',
+            'request_body' => [
+                'Name' => 'JSON для отправки',
+                'Description' => 'Тело POST-запроса. Если оставить пустым, отправится стандартный контекст бизнес-процесса.',
                 'Type' => 'text',
                 'Required' => 'N',
                 'Multiple' => 'N',
                 'Default' => '',
             ],
             'request_headers' => [
-                'Name' => 'Headers JSON',
-                'Description' => 'JSON-объект заголовков, например {"Authorization":"Bearer token"}.',
-                'Type' => 'text',
-                'Required' => 'N',
-                'Multiple' => 'N',
-                'Default' => '',
-            ],
-            'body_mode' => [
-                'Name' => 'Body mode',
-                'Description' => 'Формат тела запроса.',
-                'Type' => 'select',
-                'Required' => 'N',
-                'Multiple' => 'N',
-                'Default' => 'json',
-                'Options' => [
-                    'none' => 'Без тела',
-                    'json' => 'JSON',
-                    'raw' => 'Raw text',
-                    'form' => 'Form URL encoded',
-                ],
-            ],
-            'request_body' => [
-                'Name' => 'Request body',
-                'Description' => 'JSON/raw/form тело запроса. Если пусто, будет отправлен стандартный контекст БП.',
+                'Name' => 'Заголовки JSON',
+                'Description' => 'Необязательно. Например {"Authorization":"Bearer token"}.',
                 'Type' => 'text',
                 'Required' => 'N',
                 'Multiple' => 'N',
                 'Default' => '',
             ],
             'timeout_seconds' => [
-                'Name' => 'Timeout seconds',
-                'Description' => 'Таймаут внешнего запроса в секундах.',
+                'Name' => 'Таймаут, сек',
+                'Description' => 'Сколько секунд ждать ответ вебхука.',
                 'Type' => 'int',
                 'Required' => 'N',
                 'Multiple' => 'N',
@@ -423,31 +398,31 @@ function webhook_activity_fields(string $handlerUrl, string $placementUrl): arra
         ],
         'RETURN_PROPERTIES' => [
             'webhook_result' => [
-                'Name' => 'Webhook response',
+                'Name' => 'Ответ вебхука',
                 'Type' => 'text',
                 'Multiple' => 'N',
                 'Default' => null,
             ],
             'http_status' => [
-                'Name' => 'HTTP status',
+                'Name' => 'HTTP-статус',
                 'Type' => 'int',
                 'Multiple' => 'N',
                 'Default' => null,
             ],
             'error_message' => [
-                'Name' => 'Error message',
+                'Name' => 'Текст ошибки',
                 'Type' => 'text',
                 'Multiple' => 'N',
                 'Default' => null,
             ],
             'response_headers' => [
-                'Name' => 'Response headers',
+                'Name' => 'Заголовки ответа',
                 'Type' => 'text',
                 'Multiple' => 'N',
                 'Default' => null,
             ],
             'duration_seconds' => [
-                'Name' => 'Duration seconds',
+                'Name' => 'Время выполнения, сек',
                 'Type' => 'string',
                 'Multiple' => 'N',
                 'Default' => null,
@@ -466,56 +441,48 @@ function parser_activity_fields(string $handlerUrl, string $placementUrl): array
         'USE_SUBSCRIPTION' => 'Y',
         'DOCUMENT_TYPE' => ['crm', 'CCrmDocumentDeal', 'DEAL'],
         'NAME' => 'ByteBit Парсинг JSON',
-        'DESCRIPTION' => 'Достает значение из JSON-ответа по пути вроде data.id или $.result.items[0].id.',
+        'DESCRIPTION' => 'Достает одно нужное значение из JSON-ответа и возвращает его в переменную бизнес-процесса.',
         'PROPERTIES' => [
             'source_json' => [
-                'Name' => 'JSON response',
-                'Description' => 'Ответ вебхука или другая JSON-строка.',
+                'Name' => 'JSON-ответ',
+                'Description' => 'Вставьте сюда ответ вебхука, обычно переменную Ответ вебхука из первой activity.',
                 'Type' => 'text',
                 'Required' => 'Y',
                 'Multiple' => 'N',
                 'Default' => '',
             ],
             'json_path' => [
-                'Name' => 'JSON path',
-                'Description' => 'Что вытащить из ответа: id, data.id, $.result.items[0].id.',
+                'Name' => 'Что вытащить',
+                'Description' => 'Путь к полю: id, data.id или $.items[0].id.',
                 'Type' => 'string',
                 'Required' => 'Y',
                 'Multiple' => 'N',
                 'Default' => '',
             ],
             'default_value' => [
-                'Name' => 'Default value',
-                'Description' => 'Что вернуть, если путь не найден.',
+                'Name' => 'Если не найдено',
+                'Description' => 'Значение, которое вернется, если такого поля нет.',
                 'Type' => 'string',
                 'Required' => 'N',
                 'Multiple' => 'N',
                 'Default' => '',
             ],
-            'output_as_json' => [
-                'Name' => 'Output as JSON',
-                'Description' => 'Y - вернуть найденный массив/объект как JSON.',
-                'Type' => 'bool',
-                'Required' => 'N',
-                'Multiple' => 'N',
-                'Default' => 'N',
-            ],
         ],
         'RETURN_PROPERTIES' => [
             'parsed_value' => [
-                'Name' => 'Parsed value',
+                'Name' => 'Найденное значение',
                 'Type' => 'text',
                 'Multiple' => 'N',
                 'Default' => null,
             ],
             'path_found' => [
-                'Name' => 'Path found',
+                'Name' => 'Поле найдено',
                 'Type' => 'string',
                 'Multiple' => 'N',
                 'Default' => null,
             ],
             'parse_error' => [
-                'Name' => 'Parse error',
+                'Name' => 'Ошибка парсинга',
                 'Type' => 'text',
                 'Multiple' => 'N',
                 'Default' => null,
@@ -660,10 +627,11 @@ HTML : '';
             <h2>Короткий гайд</h2>
             <ol>
                 <li>В дизайнере бизнес-процессов добавьте <code>ByteBit HTTP-запрос</code>.</li>
-                <li>Для простого сценария вставьте только URL вебхука. Для сложного заполните метод, headers, query, body и timeout.</li>
-                <li>Успешный ответ попадет в <code>webhook_result</code>, ошибка отдельно в <code>error_message</code>, время выполнения в <code>duration_seconds</code>.</li>
+                <li>Вставьте <code>URL вебхука</code> и выберите метод <code>GET</code> или <code>POST</code>.</li>
+                <li>Если нужен POST, заполните <code>JSON для отправки</code>. Заголовки заполняйте только для авторизации или специальных требований API.</li>
+                <li>Успешный ответ попадет в <code>Ответ вебхука</code>, ошибка отдельно в <code>Текст ошибки</code>, время выполнения в <code>Время выполнения, сек</code>.</li>
                 <li>Чтобы вытащить поле из ответа, добавьте <code>ByteBit Парсинг JSON</code>, передайте туда <code>webhook_result</code> и укажите путь вроде <code>id</code> или <code>data.id</code>.</li>
-                <li>Значение из парсера берите из <code>parsed_value</code> и записывайте в переменную БП.</li>
+                <li>Значение из парсера берите из <code>Найденное значение</code> и записывайте в переменную БП.</li>
             </ol>
             <details>
                 <summary>Технические детали установки</summary>

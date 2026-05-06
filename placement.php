@@ -65,15 +65,10 @@ function current_value(array $current, string $key, string $default = ''): strin
             border-radius: 8px;
             padding: 16px;
         }
-        h1, h2 {
-            margin: 0 0 10px;
-            line-height: 1.2;
-        }
         h1 {
+            margin: 0 0 10px;
             font-size: 20px;
-        }
-        h2 {
-            font-size: 16px;
+            line-height: 1.2;
         }
         p {
             margin: 0 0 12px;
@@ -85,7 +80,7 @@ function current_value(array $current, string $key, string $default = ''): strin
         }
         @media (min-width: 760px) {
             .grid.two {
-                grid-template-columns: 180px 1fr;
+                grid-template-columns: 170px 1fr;
                 align-items: start;
             }
         }
@@ -118,6 +113,7 @@ function current_value(array $current, string $key, string $default = ''): strin
             font-size: 13px;
         }
         .callout {
+            margin-top: 12px;
             background: var(--soft);
             border: 1px solid #c7e4da;
             border-radius: 8px;
@@ -145,81 +141,72 @@ function current_value(array $current, string $key, string $default = ''): strin
     <div class="layout">
         <?php if (!$isParserPlacement): ?>
         <section class="panel">
-            <h1>HTTP/webhook-запрос</h1>
-            <p>Можно вставить только URL, как раньше. Для сложного запроса заполните метод, query, headers и body.</p>
+            <h1>HTTP-запрос</h1>
+            <p>Для обычного вебхука достаточно вставить URL. Остальные поля нужны только если сервис требует метод POST, JSON или заголовок авторизации.</p>
 
             <div class="grid two">
-                <div>
-                    <label for="webhook-url">Webhook URL</label>
-                </div>
+                <div><label for="webhook-url">URL вебхука</label></div>
                 <div>
                     <input id="webhook-url" data-prop="webhook_url" type="url" placeholder="https://example.com/webhook" value="<?= htmlspecialchars(current_value($current, 'webhook_url'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-                    <div class="hint">Быстрый режим: только это поле, тогда запрос уйдет POST JSON со стандартным контекстом БП.</div>
+                    <div class="hint">Query-параметры можно писать прямо в URL: <code>?id=123</code>.</div>
                 </div>
 
                 <div><label for="http-method">Метод</label></div>
                 <div>
                     <select id="http-method" data-prop="http_method">
-                        <?php foreach (['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as $method): ?>
+                        <?php foreach (['GET', 'POST'] as $method): ?>
                             <option value="<?= $method ?>" <?= current_value($current, 'http_method', 'POST') === $method ? 'selected' : '' ?>><?= $method ?></option>
                         <?php endforeach; ?>
                     </select>
+                    <div class="hint"><code>GET</code> получает данные, <code>POST</code> отправляет JSON.</div>
+                </div>
+
+                <div><label for="request-body">JSON для отправки</label></div>
+                <div>
+                    <textarea id="request-body" data-prop="request_body" placeholder='{"id":"{{ID}}","source":"bitrix24"}'><?= htmlspecialchars(current_value($current, 'request_body'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
+                    <div class="hint">Можно оставить пустым: тогда POST отправит стандартные данные бизнес-процесса.</div>
+                </div>
+
+                <div><label for="request-headers">Заголовки JSON</label></div>
+                <div>
+                    <textarea id="request-headers" data-prop="request_headers" placeholder='{"Authorization":"Bearer token"}'><?= htmlspecialchars(current_value($current, 'request_headers'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
+                    <div class="hint">Необязательное поле. Заполняйте только если API требует токен или свой заголовок.</div>
                 </div>
 
                 <div><label for="timeout-seconds">Таймаут, сек</label></div>
-                <div>
-                    <input id="timeout-seconds" data-prop="timeout_seconds" type="number" min="1" max="300" step="1" value="<?= htmlspecialchars(current_value($current, 'timeout_seconds', '60'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-                    <div class="hint">В результат вернется <code>duration_seconds</code> с 4 знаками после запятой.</div>
-                </div>
+                <input id="timeout-seconds" data-prop="timeout_seconds" type="number" min="1" max="300" step="1" value="<?= htmlspecialchars(current_value($current, 'timeout_seconds', '60'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
+            </div>
 
-                <div><label for="query-params">Query JSON</label></div>
-                <textarea id="query-params" data-prop="query_params" placeholder='{"deal_id":"{{ID}}"}'><?= htmlspecialchars(current_value($current, 'query_params'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
-
-                <div><label for="request-headers">Headers JSON</label></div>
-                <textarea id="request-headers" data-prop="request_headers" placeholder='{"Authorization":"Bearer token","X-Source":"Bitrix24"}'><?= htmlspecialchars(current_value($current, 'request_headers'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
-
-                <div><label for="body-mode">Body</label></div>
-                <div>
-                    <select id="body-mode" data-prop="body_mode">
-                        <?php foreach (['json' => 'JSON', 'raw' => 'Raw text', 'form' => 'Form URL encoded', 'none' => 'Без тела'] as $value => $label): ?>
-                            <option value="<?= $value ?>" <?= current_value($current, 'body_mode', 'json') === $value ? 'selected' : '' ?>><?= $label ?></option>
-                        <?php endforeach; ?>
-                    </select>
-                </div>
-
-                <div><label for="request-body">Body value</label></div>
-                <textarea id="request-body" data-prop="request_body" placeholder='{"id":"{{ID}}","source":"bitrix24"}'><?= htmlspecialchars(current_value($current, 'request_body'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
+            <div class="callout">
+                Результаты: <code>Ответ вебхука</code>, <code>HTTP-статус</code>, <code>Текст ошибки</code>, <code>Время выполнения, сек</code>.
             </div>
         </section>
         <?php endif; ?>
 
         <?php if ($isParserPlacement): ?>
         <section class="panel">
-            <h2>Парсинг JSON-ответа</h2>
-            <p>Во второй activity вставьте JSON-ответ и путь к нужному полю. Найденное значение вернется как <code>parsed_value</code>, его можно записать в переменную БП.</p>
+            <h1>Парсинг JSON</h1>
+            <p>Эта activity берет JSON-ответ и достает из него одно поле, чтобы записать значение в переменную бизнес-процесса.</p>
 
             <div class="grid two">
-                <div><label for="source-json">JSON response</label></div>
-                <textarea id="source-json" data-prop="source_json" placeholder='{"id":123,"data":{"deal":"D-1"}}'><?= htmlspecialchars(current_value($current, 'source_json'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
+                <div><label for="source-json">JSON-ответ</label></div>
+                <div>
+                    <textarea id="source-json" data-prop="source_json" placeholder='{"id":123,"data":{"deal":"D-1"}}'><?= htmlspecialchars(current_value($current, 'source_json'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></textarea>
+                    <div class="hint">Обычно сюда подставляют результат <code>Ответ вебхука</code> из первой activity.</div>
+                </div>
 
                 <div><label for="json-path">Что вытащить</label></div>
                 <div>
                     <input id="json-path" data-prop="json_path" type="text" placeholder="id или data.deal или $.items[0].id" value="<?= htmlspecialchars(current_value($current, 'json_path'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-                    <div class="hint">Поддерживаются простые пути через точку и индексы массивов: <code>data.items[0].id</code>.</div>
+                    <div class="hint">Примеры: <code>id</code>, <code>data.id</code>, <code>items[0].id</code>.</div>
                 </div>
 
                 <div><label for="default-value">Если не найдено</label></div>
                 <input id="default-value" data-prop="default_value" type="text" value="<?= htmlspecialchars(current_value($current, 'default_value'), ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?>">
-
-                <div><label for="output-as-json">Массив/объект</label></div>
-                <select id="output-as-json" data-prop="output_as_json">
-                    <option value="N" <?= current_value($current, 'output_as_json', 'N') !== 'Y' ? 'selected' : '' ?>>Вернуть как текст</option>
-                    <option value="Y" <?= current_value($current, 'output_as_json', 'N') === 'Y' ? 'selected' : '' ?>>Вернуть как JSON</option>
-                </select>
             </div>
 
             <div class="callout">
-                Выходы: <code>parsed_value</code>, <code>path_found</code>, <code>parse_error</code>.
+                Основной результат: <code>Найденное значение</code>. Его и записывайте в переменную БП.
             </div>
         </section>
         <?php endif; ?>

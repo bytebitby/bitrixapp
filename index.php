@@ -4,8 +4,6 @@ declare(strict_types=1);
 require __DIR__ . '/bootstrap.php';
 
 $installUrl = app_url('install.php');
-$handlerUrl = app_url('handler.php');
-$placementUrl = app_url('placement.php');
 ?>
 <!doctype html>
 <html lang="ru">
@@ -78,31 +76,36 @@ $placementUrl = app_url('placement.php');
             border-radius: 8px;
             padding: 14px;
         }
-        a {
-            color: var(--accent);
-            font-weight: 700;
-        }
     </style>
 </head>
 <body>
     <main>
         <section>
             <div class="badge">Bitrix24 Local App</div>
-            <h1>ByteBit Webhook</h1>
-            <p>После установки в дизайнере бизнес-процессов появятся две activity: HTTP/webhook-запрос и парсинг JSON-ответа.</p>
+            <h1>Как пользоваться ByteBit Webhook</h1>
+            <p>Эта инструкция для момента, когда приложение уже установлено и activity появились в дизайнере бизнес-процессов.</p>
 
-            <h2>Как пользоваться</h2>
+            <h2>1. Отправить вебхук</h2>
             <ol>
-                <li>В локальном приложении Bitrix24 укажите путь установки: <code><?= htmlspecialchars((string)$installUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></code>.</li>
-                <li>Откройте приложение один раз: оно само зарегистрирует activity в Bitrix24.</li>
-                <li>В бизнес-процессе добавьте <code>ByteBit HTTP-запрос</code>. Можно просто вставить URL вебхука или настроить метод, headers, query, body и timeout.</li>
-                <li>Ответ вернется в <code>webhook_result</code>, ошибки отдельно в <code>error_message</code>, HTTP-код в <code>http_status</code>, время в <code>duration_seconds</code>.</li>
-                <li>Чтобы достать значение из ответа, добавьте <code>ByteBit Парсинг JSON</code>, передайте туда <code>webhook_result</code> и укажите путь: например <code>id</code>, <code>data.id</code> или <code>$.items[0].id</code>.</li>
-                <li>Используйте выход <code>parsed_value</code> и запишите его в нужную переменную бизнес-процесса.</li>
+                <li>Откройте нужный бизнес-процесс в Bitrix24.</li>
+                <li>Добавьте activity <code>ByteBit HTTP-запрос</code>.</li>
+                <li>В поле <code>URL вебхука</code> вставьте адрес сервиса. Если нужны query-параметры, добавьте их прямо в URL, например <code>?id=123</code>.</li>
+                <li>Выберите метод: <code>GET</code>, если нужно только получить данные, или <code>POST</code>, если нужно отправить JSON.</li>
+                <li>Если используете <code>POST</code>, заполните <code>JSON для отправки</code>. Если оставить поле пустым, приложение отправит стандартные данные бизнес-процесса.</li>
+                <li>Поле <code>Заголовки JSON</code> заполняйте только если API требует токен или специальный заголовок.</li>
+                <li>После выполнения смотрите результат в полях <code>Ответ вебхука</code>, <code>HTTP-статус</code>, <code>Текст ошибки</code> и <code>Время выполнения, сек</code>.</li>
+            </ol>
+
+            <h2>2. Достать значение из ответа</h2>
+            <ol>
+                <li>После HTTP-запроса добавьте activity <code>ByteBit Парсинг JSON</code>.</li>
+                <li>В поле <code>JSON-ответ</code> подставьте результат <code>Ответ вебхука</code> из первой activity.</li>
+                <li>В поле <code>Что вытащить</code> укажите путь к нужному значению: например <code>id</code>, <code>data.id</code> или <code>items[0].id</code>.</li>
+                <li>Возьмите результат <code>Найденное значение</code> и запишите его в переменную бизнес-процесса.</li>
             </ol>
 
             <div class="box">
-                Служебные URL: handler <code><?= htmlspecialchars((string)$handlerUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></code>, placement <code><?= htmlspecialchars((string)$placementUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></code>.
+                Если activity не появились после обновления, откройте путь установки еще раз: <code><?= htmlspecialchars((string)$installUrl, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8') ?></code>
             </div>
         </section>
     </main>

@@ -32,16 +32,6 @@ function decode_json_object_property(string $raw, string $fieldName, array &$err
     return $decoded;
 }
 
-function append_query_params(string $url, array $params): string
-{
-    if ($params === []) {
-        return $url;
-    }
-
-    $separator = str_contains($url, '?') ? '&' : '?';
-    return $url . $separator . http_build_query($params);
-}
-
 function build_default_request_body(array $data, ?string $domain, mixed $eventToken): array
 {
     return [
@@ -58,7 +48,6 @@ function execute_parser_activity(array $data, ?string $domain, ?string $token, m
     $sourceJson = stringify_value(activity_property($data, 'source_json', ''));
     $jsonPath = stringify_value(activity_property($data, 'json_path', ''));
     $defaultValue = stringify_value(activity_property($data, 'default_value', ''));
-    $outputAsJson = strtoupper(stringify_value(activity_property($data, 'output_as_json', 'N'))) === 'Y';
 
     $payload = [
         'parsed_value' => '',
@@ -78,7 +67,7 @@ function execute_parser_activity(array $data, ?string $domain, ?string $token, m
             $found = false;
             $value = extract_json_path($decoded, $jsonPath, $found);
             $payload['path_found'] = $found ? 'Y' : 'N';
-            $payload['parsed_value'] = $found ? value_for_bizproc($value, $outputAsJson) : $defaultValue;
+            $payload['parsed_value'] = $found ? value_for_bizproc($value) : $defaultValue;
         }
     }
 
@@ -107,8 +96,7 @@ function execute_webhook_activity(array $data, ?string $domain, ?string $token, 
 {
     $webhookUrl = stringify_value(activity_property($data, 'webhook_url', ''));
     $method = strtoupper(stringify_value(activity_property($data, 'http_method', 'POST')));
-    $allowedMethods = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'];
-    if (!in_array($method, $allowedMethods, true)) {
+    if (!in_array($method, ['GET', 'POST'], true)) {
         $method = 'POST';
     }
 
@@ -120,15 +108,9 @@ function execute_webhook_activity(array $data, ?string $domain, ?string $token, 
         $timeout = 300;
     }
 
-    $bodyMode = strtolower(stringify_value(activity_property($data, 'body_mode', 'json')));
-    if (!in_array($bodyMode, ['none', 'json', 'raw', 'form'], true)) {
-        $bodyMode = 'json';
-    }
-
     $requestBodyRaw = stringify_value(activity_property($data, 'request_body', ''));
     $configErrors = [];
-    $headers = decode_json_object_property(stringify_value(activity_property($data, 'request_headers', '')), 'Headers JSON', $configErrors);
-    $queryParams = decode_json_object_property(stringify_value(activity_property($data, 'query_params', '')), 'Query params JSON', $configErrors);
+    $headers = decode_json_object_property(stringify_value(activity_property($data, 'request_headers', '')), 'Заголовки JSON', $configErrors);
 
     $resultPayload = [
         'webhook_result' => '',
@@ -154,16 +136,15 @@ function execute_webhook_activity(array $data, ?string $domain, ?string $token, 
 
     $defaultBody = build_default_request_body($data, $domain, $eventToken);
     $requestBody = null;
-    $contentType = null;
 
-    if ($bodyMode === 'json') {
+    if ($method === 'POST') {
         if ($requestBodyRaw === '') {
             $requestBody = json_encode($defaultBody, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
         } else {
             json_decode($requestBodyRaw, true);
             if (json_last_error() !== JSON_ERROR_NONE) {
-                $resultPayload['error_message'] = 'Request body должен быть корректным JSON: ' . json_last_error_msg();
-                send_bizproc_result($domain, $token, $eventToken, $resultPayload, 'HTTP-запрос не выполнен: некорректный JSON body.');
+                $resultPayload['error_message'] = 'Поле "JSON для отправки" должно содержать корректный JSON: ' . json_last_error_msg();
+                send_bizproc_result($domain, $token, $eventToken, $resultPayload, 'HTTP-запрос не выполнен: некорректный JSON.');
                 json_response([
                     'success' => false,
                     'error' => 'INVALID_JSON_BODY',
@@ -172,23 +153,17 @@ function execute_webhook_activity(array $data, ?string $domain, ?string $token, 
             }
             $requestBody = $requestBodyRaw;
         }
-        $contentType = 'application/json';
-    } elseif ($bodyMode === 'raw') {
-        $requestBody = $requestBodyRaw;
-        $contentType = 'text/plain; charset=utf-8';
-    } elseif ($bodyMode === 'form') {
-        $formData = $requestBodyRaw === '' ? $defaultBody : decode_json_object_property($requestBodyRaw, 'Form body JSON', $configErrors);
-        if ($configErrors !== []) {
-            $resultPayload['error_message'] = implode(' ', $configErrors);
-            send_bizproc_result($domain, $token, $eventToken, $resultPayload, 'HTTP-запрос не выполнен: некорректное form body.');
+    } elseif ($requestBodyRaw !== '') {
+        json_decode($requestBodyRaw, true);
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            $resultPayload['error_message'] = 'Поле "JSON для отправки" заполнено, но это не корректный JSON: ' . json_last_error_msg();
+            send_bizproc_result($domain, $token, $eventToken, $resultPayload, 'HTTP-запрос не выполнен: некорректный JSON.');
             json_response([
                 'success' => false,
-                'error' => 'INVALID_FORM_BODY',
+                'error' => 'INVALID_JSON_BODY',
                 'result' => $resultPayload,
             ], 400);
         }
-        $requestBody = http_build_query($formData);
-        $contentType = 'application/x-www-form-urlencoded';
     }
 
     if (is_string($eventToken) && $eventToken !== '' && $domain !== null && $token !== null) {
@@ -200,8 +175,8 @@ function execute_webhook_activity(array $data, ?string $domain, ?string $token, 
 
     $responseHeaders = [];
     $requestHeaders = ['Accept: application/json, text/plain, */*'];
-    if ($contentType !== null && !array_key_exists('Content-Type', $headers) && !array_key_exists('content-type', $headers)) {
-        $requestHeaders[] = 'Content-Type: ' . $contentType;
+    if (!array_key_exists('Content-Type', $headers) && !array_key_exists('content-type', $headers)) {
+        $requestHeaders[] = 'Content-Type: application/json';
     }
     foreach ($headers as $name => $value) {
         if (is_scalar($value)) {
@@ -209,7 +184,7 @@ function execute_webhook_activity(array $data, ?string $domain, ?string $token, 
         }
     }
 
-    $targetUrl = append_query_params($webhookUrl, $queryParams);
+    $targetUrl = $webhookUrl;
     $startTime = microtime(true);
     $ch = curl_init($targetUrl);
     curl_setopt_array($ch, [
@@ -232,7 +207,7 @@ function execute_webhook_activity(array $data, ?string $domain, ?string $token, 
         },
     ]);
 
-    if ($bodyMode !== 'none' && $method !== 'GET' && $requestBody !== null) {
+    if ($method === 'POST' && $requestBody !== null) {
         curl_setopt($ch, CURLOPT_POSTFIELDS, $requestBody);
     }
 
