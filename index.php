@@ -2,6 +2,21 @@
 declare(strict_types=1);
 
 require __DIR__ . '/bootstrap.php';
+
+$data = get_request_data();
+$domain = get_portal_domain($data);
+$token = get_auth_token($data);
+$handlerUrl = app_url('handler.php');
+$placementUrl = app_url('placement.php');
+
+if ($domain !== null && $token !== null && $handlerUrl !== null && $placementUrl !== null) {
+    $syncResult = sync_activity_definitions($domain, $token, $handlerUrl, $placementUrl);
+    app_log('INDEX ACTIVITY SYNC', [
+        'portal' => $domain,
+        'success' => $syncResult['success'],
+        'activity_results' => $syncResult['activity_results'],
+    ]);
+}
 ?>
 <!doctype html>
 <html lang="ru">

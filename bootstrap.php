@@ -505,6 +505,46 @@ function activity_definitions(string $handlerUrl, string $placementUrl): array
     ];
 }
 
+function activity_codes_to_cleanup(): array
+{
+    return array_values(array_unique([
+        app_config()['activity_code'],
+        app_config()['parse_activity_code'],
+        'bytebit_webhook_activity',
+        'bytebit_webhook_activity_v2',
+        'bytebit_webhook_response_parser_v1',
+    ]));
+}
+
+function sync_activity_definitions(string $domain, string $token, string $handlerUrl, string $placementUrl): array
+{
+    $cleanupResults = [];
+    foreach (activity_codes_to_cleanup() as $codeToCleanup) {
+        $cleanupResults[$codeToCleanup] = rest_call($domain, $token, 'bizproc.activity.delete', [
+            'CODE' => $codeToCleanup,
+        ]);
+    }
+
+    $activityResults = [];
+    foreach (activity_definitions($handlerUrl, $placementUrl) as $activityCode => $fields) {
+        $activityResults[$activityCode] = rest_call($domain, $token, 'bizproc.activity.add', $fields);
+    }
+
+    $success = true;
+    foreach ($activityResults as $result) {
+        if (!empty($result['error'])) {
+            $success = false;
+            break;
+        }
+    }
+
+    return [
+        'success' => $success,
+        'cleanup_results' => $cleanupResults,
+        'activity_results' => $activityResults,
+    ];
+}
+
 function normalize_webhook_result(string $responseBody): string
 {
     $decoded = json_decode($responseBody, true);

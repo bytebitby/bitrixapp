@@ -13,13 +13,6 @@ $domain = get_portal_domain($data);
 $token = get_auth_token($data);
 $handlerUrl = app_url('handler.php');
 $placementUrl = app_url('placement.php');
-$activityCodesToCleanup = array_values(array_unique([
-    app_config()['activity_code'],
-    app_config()['parse_activity_code'],
-    'bytebit_webhook_activity',
-    'bytebit_webhook_activity_v2',
-    'bytebit_webhook_response_parser_v1',
-]));
 
 if ($handlerUrl === null || $placementUrl === null) {
     render_install_page(false, [
@@ -52,30 +45,11 @@ app_log('INSTALL FIELDS', [
     'fields' => $activityDefinitions,
 ]);
 
-$cleanupResults = [];
-foreach ($activityCodesToCleanup as $codeToCleanup) {
-    $cleanupResults[$codeToCleanup] = rest_call($domain, $token, 'bizproc.activity.delete', [
-        'CODE' => $codeToCleanup,
-    ]);
-}
-
-app_log('INSTALL CLEANUP RESULTS', [
-    'cleanup_results' => $cleanupResults,
-]);
-
-$activityResults = [];
-foreach ($activityDefinitions as $activityCode => $fields) {
-    $activityResults[$activityCode] = rest_call($domain, $token, 'bizproc.activity.add', $fields);
-}
-
+$syncResult = sync_activity_definitions($domain, $token, $handlerUrl, $placementUrl);
+$cleanupResults = $syncResult['cleanup_results'];
+$activityResults = $syncResult['activity_results'];
 $operation = 'delete+add';
-$success = true;
-foreach ($activityResults as $result) {
-    if (!empty($result['error'])) {
-        $success = false;
-        break;
-    }
-}
+$success = $syncResult['success'];
 
 $registeredActivities = rest_call($domain, $token, 'bizproc.activity.list', []);
 app_log('INSTALL FINAL STATE', [
